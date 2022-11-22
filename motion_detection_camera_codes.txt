@@ -1,0 +1,108 @@
+import numpy as np
+import os
+import cv2 ,time
+import imutils
+first_frame=None
+from datetime import datetime
+now = datetime.now()
+dt_string = now.strftime("%d_%m_%Y-%H_%M_%S")
+filename = '.avi'
+filename = dt_string+filename
+filename = 'opencv_video_'+filename
+frames_per_second = 24.0
+res = '720p'
+# Set resolution for the video capture
+def change_res(video, width, height):
+    video.set(3, width)
+    video.set(4, height)
+
+# Standard Video Dimensions Sizes
+STD_DIMENSIONS =  {
+    "480p": (640, 480),
+    "720p": (1280, 720),
+    "1080p": (1920, 1080),
+    "4k": (3840, 2160),
+}
+# grab resolution dimensions and set video capture to it.
+def get_dims(video, res='1080p'):
+    width, height = STD_DIMENSIONS["480p"]
+    if res in STD_DIMENSIONS:
+        width,height = STD_DIMENSIONS[res]
+    ## change the current caputre device
+    ## to the resulting resolution
+    change_res(video, width, height)
+    return width, height
+
+# Video Encoding, might require additional installs
+VIDEO_TYPE = {
+    'avi': cv2.VideoWriter_fourcc(*'XVID'),
+    #'mp4': cv2.VideoWriter_fourcc(*'H264'),
+    'mp4': cv2.VideoWriter_fourcc(*'XVID'),
+}
+
+def get_video_type(filename):
+    filename, ext = os.path.splitext(filename)
+    if ext in VIDEO_TYPE:
+      return  VIDEO_TYPE[ext]
+    return VIDEO_TYPE['avi']
+
+#cv2.startWindowThread()
+video = cv2.VideoCapture(0)
+out = cv2.VideoWriter(filename, get_video_type(filename), 25, get_dims(video, res))
+movestat = 0
+videostat = 0
+video_starting_stat = 0
+frame=video.read()
+while True:
+    check,frame=video.read()
+    gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+    gray=cv2.GaussianBlur(gray,(21,21),0)
+    if first_frame is None:
+        first_frame=gray
+        continue
+    delta_frame = cv2.absdiff(first_frame,gray)
+    threshold_frame = cv2.threshold(delta_frame,60,255,cv2.THRESH_BINARY)[1]
+    threshold_frame = cv2.dilate(threshold_frame,None,iterations=2)
+    (cntr,_) = cv2.findContours(threshold_frame.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    for contour in cntr:
+      
+        if cv2.contourArea(contour)<2000:
+            continue
+        (x,y,w,h) = cv2.boundingRect(contour)
+        cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),3)
+        if cv2.contourArea(contour)>2000:
+            print(cv2.contourArea(contour))
+            movestat = 0
+            print('movement')
+            if(videostat == 0):
+                now = datetime.now()
+                dt_string = now.strftime("%d_%m_%Y-%H_%M_%S")
+                filename = '.avi'
+                filename = dt_string+filename
+                filename = 'opencv_video_'+filename
+                video_starting_stat = 1
+                print('video start')
+                out = cv2.VideoWriter(filename, get_video_type(filename), 25, get_dims(video, res))
+                out.write(frame)
+                videostat = 1
+            movestat = 0
+
+            
+    if video_starting_stat == 1:
+        out.write(frame)
+        print('recording')
+    if movestat == 100:
+        if videostat == 1:
+            print('video ends')
+            video_starting_stat = 0
+            out.release()
+        videostat = 0
+    movestat = movestat+1
+    cv2.imshow("Flexi",frame)
+    key = cv2.waitKey(1)
+    if key==ord('q'):
+        if video_starting_stat == 1:
+            out.release()
+        break
+video.release()
+cv2.destroyAllWindows()
